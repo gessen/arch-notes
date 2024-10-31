@@ -1,0 +1,277 @@
+#+TITLE: ArchLinux notes
+
+* Base system installation
+** Wipe disk
+
+#+begin_src sh
+wipefs --all /dev/nvme1n1
+sgdisk -Zo /dev/nvme1n1
+#+end_src
+
+** btrfs subvolumes
+Mount the root btrfs volume:
+
+#+begin_src sh
+mount /dev/nvme1n1p2 /mnt
+#+end_src
+
+Create subvolume for root, home and var:
+
+#+begin_src sh
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
+btrfs subvolume create /mnt/@var
+#+end_src
+
+Finally, mount them:
+
+#+begin_src s
+umount /mnt
+mount -o noatime,compress=zstd,subvol=@ /dev/nvme1n1p2 /mnt
+mkdir /mnt/{efi,home,var}
+mount -o noatime,compress=zstd,subvol=@home /dev/nvme1n1p2 /mnt/home
+mount -o noatime,compress=zstd,subvol=@var /dev/nvme1n1p2 /mnt/var
+mount /dev/nvme1n1p1 /mnt/efi
+#+end_src
+
+** Base packages
+
+Install the below list of packages with =pacstrap -K= to =/mnt=:
+
+- =amd-ucode= or =intel-ucode=
+- =base=
+- =base-devel=
+- =btrfs-progs=
+- =helix=
+- =linux=
+- =linux-firmware=
+- =man-db=
+- =man-pages=
+- =networkmanager=
+- =refind=
+
+** Bootmanager (rEFInd)
+
+Install rEFInd boot manager:
+
+#+begin_src sh
+refind-install
+#+end_src
+
+Edit rEFInd configuration file to change default settings. e.g. default boot choice
+
+#+begin_src sh
+helix /efi/EFI/refind/refind.conf
+#+end_src
+
+Edit ArchLinux rEFInd configuration (assuming =/dev/nvme1n1p2= contains rootfs):
+
+#+begin_src sh
+helix /boot/refind_linux.conf
+
+"Boot with standard options" "root=UUID=$(blkid -o value -s UUID /dev/nvme1n1p2) rw rootflags=subvol=@ initrd=@\boot\initramfs-linux.img amd_pstate=guided"
+"Boot with fallback options" "root=UUID=$(blkid -o value -s UUID /dev/nvme1n1p2) rw rootflags=subvol=@ initrd=@\boot\initramfs-linux-fallback.img"
+#+end_src
+
+*** Customisation
+
+#+begin_src sh
+git clone https://github.com/dheishman/refind-dreary /tmp/refind-dreary
+/tmp/refind-dreary/install.sh highres /efi/EFI/refind
+#+end_src
+
+* Base system configuration
+** Network with Wi-Fi
+
+#+begin_src sh
+systemctl enable NetworkManager
+#+end_src
+
+** Time and date configuration
+
+#+begin_src sh
+systemctl enable systemd-timesync
+timedatectl set-ntp true
+hwclock --systohc
+#+end_src
+
+** Periodic TRIM for SSD
+
+#+begin_src sh
+systemctl enable fstrim.timer
+#+end_src
+
+** Sensors
+
+#+begin_src sh
+pacman -S lm_sensors
+sensors-detect
+#+end_src
+
+* Graphical environment
+** AMD drivers
+Enable multilib repository:
+#+begin_src sh
+sed -zi 's|#\[multilib\]\n#Include|[multilib]\nInclude|g' /etc/pacman.conf
+#+end_src
+
+Install AMD drivers:
+#+begin_src sh
+pacman -S \
+  libva-mesa-driver \
+  mesa \
+  vulkan-icd-loader \
+  vulkan-radeon \
+  lib32-mesa \
+  lib32-vulkan-icd-loader \
+  lib32-vulkan-radeon \
+;
+#+end_src
+** NVidia drivers
+Enable multilib repository:
+#+begin_src sh
+sed -zi 's|#\[multilib\]\n#Include|[multilib]\nInclude|g' /etc/pacman.conf
+#+end_src
+
+Install NVidia drivers:
+#+begin_src sh
+pacman -S \
+  libva-nvidia-driver \
+  nvidia \
+  nvidia-settings \
+  nvidia-utils \
+  vulkan-icd-loader \
+  lib32-nvidia-utils \
+  lib32-vulkan-icd-loader \
+;
+#+end_src
+
+Enable DRM by adding =nvidia-drm.modeset=1= to kernel parameters:
+
+#+begin_src sh
+helix /boot/refind_linux.conf
+#+end_src
+
+Remove kms from HOOKS array in =/etc/mkinitcpio.conf=:
+#+begin_src sh
+sed -zi 's|kms ||g' /etc/mkinitcpio.conf
+mkinitcpio -P
+#+end_src
+
+Set VA-API driver to nvidia:
+#+begin_src sh
+echo LIBVA_DRIVER_NAME=nvidia >> /etc/environment
+#+end_src
+
+** KDE Plasma 6
+Install and enable bare Desktop Environment:
+
+#+begin_src sh
+paru -S \
+  phonon-qt6-mpv \
+  plasma-desktop \
+  plasma-nm \
+  plasma-pa \
+  sddm \
+  sddm-kcm \
+  xorg-server \
+;
+systemctl enable sddm
+#+end_src
+
+** General utilities
+
+#+begin_src sh
+pacman -S \
+  android-udev \
+  exfat-utils \
+  ntfs-3g \
+;
+#+end_src
+
+** KDE applications
+
+#+begin_src sh
+pacman -S \
+  ark \
+  dolphin \
+  dolphin-plugins \
+  gwenview \
+  kate \
+  kcalc \
+  kde-gtk-config \
+  kdeplasma-addons \
+  kgamma \
+  kinfocenter \
+  konsole \
+  kscreen \
+  kwallet-pam \
+  okular \
+  spectacle \
+  sweeper \
+;
+
+pacman -S --asdeps \
+  breeze-gtk \
+  ffmpegthumbs \
+  kdegraphics-thumbnailers \
+  kio-admin \
+  qt5-imageformats \
+  xdg-desktop-portal \
+  xdg-desktop-portal-kde \
+;
+#+end_src
+
+* Jpn
+#+begin_src sh
+paru -S \
+  anki-bin \
+  fcitx5 \
+  fctix5-breeze \
+  fctix5-configtool \
+  fctix5-gtk \
+  fctix5-mozc \
+  fctix5-qt \
+  noto-fonts-cjk \
+;
+#+end_src
+* Gaming
+#+begin_src sh
+paru -S \
+  gamemode \
+  gamescope \
+  lib32-gamemode \
+  lutris \
+  lutris-wine-meta \
+  steam \
+  vulkan-tools \
+;
+#+end_src
+
+#+begin_src sh
+usermod -aG gamemode <user>
+usermod -aG games <user>
+#+end_src sh
+
+#+begin_src
+cat /etc/tmpfiles.d/gaming.conf
+#    Path                  Mode UID  GID  Age Argument # default value as of linux 6.6
+w /proc/sys/vm/compaction_proactiveness - - - - 0 # 20
+w /proc/sys/vm/watermark_boost_factor - - - - 1 # 15000
+w /proc/sys/vm/min_free_kbytes - - - - 1048576 # 67584
+w /proc/sys/vm/watermark_scale_factor - - - - 500 # 10
+w /proc/sys/vm/swappiness - - - - 10 # 60
+w /proc/sys/vm/max_map_count - - - - 2147483642 # 65530
+w /sys/kernel/mm/lru_gen/enabled - - - - 5 # 7
+w /proc/sys/vm/zone_reclaim_mode - - - - 0 # 0 
+w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise # always
+w /sys/kernel/mm/transparent_hugepage/shmem_enabled - - - - advise # never
+w /sys/kernel/mm/transparent_hugepage/defrag - - - - never # madvise
+w /proc/sys/vm/page_lock_unfairness - - - - 1 # 5
+w /proc/sys/kernel/sched_child_runs_first - - - - 0 # 0
+w /proc/sys/kernel/sched_autogroup_enabled - - - - 1 # 1
+w /proc/sys/kernel/sched_cfs_bandwidth_slice_us - - - - 3000 # 5000
+w /sys/kernel/debug/sched/base_slice_ns  - - - - 3000000 # 3000000
+w /sys/kernel/debug/sched/migration_cost_ns - - - - 500000 # 500000
+w /sys/kernel/debug/sched/nr_migrate - - - - 8 # 32
+#+end_src
